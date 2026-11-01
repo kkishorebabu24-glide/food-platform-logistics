@@ -1,416 +1,543 @@
 # Food Platform Logistics
 
-Logistics, fulfillment, and delivery operations for the Society Food Platform.
+Logistics, fulfillment, and analytics infrastructure for a society-based food marketplace.
 
-This repository is the operational backbone for order flow, kitchen fulfillment, pickup coordination, exception handling, and resident communication for the home-food marketplace described in the main food-platform-docs project.
+This repository is designed for the real operating model of the platform: one seller serving many buyers, many buyers feeding one seller’s fulfillment queue, and many independent sellers participating in a shared community ecosystem.
 
 ## 1. Mission
 
-The logistics system exists to make the food platform reliable, transparent, and secure for three main participants:
+The logistics system exists to coordinate the flow of food orders across a residential community with clarity, speed, trust, and operational visibility.
 
-- Residents who place food orders
-- Home chefs / sellers who prepare meals
-- Society admins who verify sellers and maintain trust
+The app is not a simple 1:1 buyer-to-seller transaction model. It is a networked marketplace operating with:
 
-The goal is simple: deliver the right order, at the right time, to the right person, with minimal confusion and maximum trust.
+- one seller to many buyers
+- many buyers to one seller
+- one buyer to many sellers
+- many sellers to one buyer across different time windows
+- batch-based kitchen fulfillment
+- repeated pickup events within a society environment
+- admin oversight for trust, dispute resolution, and quality control
 
-## 2. Business Problem We Solve
+The logistics repo must therefore model commerce as a distributed local fulfillment system, not just a checkout flow.
 
-The platform is not a generic food delivery app. It is a community-based food marketplace with these constraints:
+## 2. Real Operating Pattern
 
-- pickup-first model, not full doorstep delivery
-- trusted local sellers within a society
-- daily menu cycles and time-sensitive fulfillment
-- cash-on-pickup or pre-verified payment flows
-- admin-controlled seller onboarding and verification
-- small-scale but many operational edge cases
+### 2.1 One-to-many fulfillment
 
-This creates a heavy need for logistics coordination that is operationally clean, low-friction, and secure.
+Each home chef or seller acts like a micro-fulfillment unit:
 
-## 3. Core Objectives
+- they receive multiple orders in a single meal window
+- they process a queue of orders in parallel
+- they manage preparation timing and pickup windows
+- they may accept, delay, or reject orders based on capacity
 
-- Handle order intake accurately and consistently
-- Track orders through preparation, readiness, pickup, and completion
-- Keep sellers, buyers, and admins informed in real time
-- Reduce confusion around order status and pickup timings
-- Minimize failed orders, no-shows, and misroutes
-- Support admin monitoring and dispute resolution
-- Protect customer and seller data with cyber-security-first design
+### 2.2 Many-to-one demand aggregation
 
-## 4. Scope of This Repository
+Many residents may place orders with the same seller in the same slot. This creates a queue and capacity problem:
 
-This repo covers:
+- how many orders can a seller prep in the next 30 minutes?
+- what is the expected completion time for each order?
+- which orders are priority or delayed?
+- which orders are at risk of no-show or pickup failure?
 
-- Order lifecycle management
-- Seller fulfillment queue
-- Pickup window coordination
-- Order status transitions
-- Notification events and escalation flows
-- Admin operations dashboard logic
-- Operational analytics and issue tracking
-- Security, authentication, authorization, and data protection controls
+### 2.3 Multi-seller buyer behavior
 
-This repo does not replace the application front end or the documentation repo. It is the execution layer for the logistics domain.
+A buyer may place orders with several sellers in one day or meal cycle, creating cross-seller coordination requirements:
 
-## 5. High-Level Operating Model
+- separate pickup windows per seller
+- unique order verification per seller
+- consolidated buyer view across multiple orders
+- order portfolio management per resident
 
-### Actors
+## 3. Core Goal
 
-1. Buyer
-   - browses menu
-   - places order
-   - receives updates
-   - picks up order at a designated time and location
+The logistics system must enable:
 
-2. Seller
-   - prepares menu items
-   - accepts or rejects incoming orders
-   - marks items ready for pickup
-   - updates fulfillment state
+- seller capacity planning
+- order queue management
+- batch preparation coordination
+- real-time order status tracking
+- pickup validation and verification
+- exception management
+- operational analytics
+- secure and auditable monitoring
 
-3. Admin
-   - verifies sellers
-   - monitors platform activity
-   - handles escalations, disputes, and order failures
+## 4. Logistics Domain Model
 
-4. Logistics System
-   - validates order state transitions
-   - triggers notifications
-   - manages queue and timing rules
-   - records operational events
+### 4.1 Core entities
 
-## 6. Order Lifecycle
+- SellerProfile
+  - seller identity and verification status
+  - menu and meal preparation rules
+  - service area and delivery/pickup policy
+  - operating hours and capacity windows
 
-The order lifecycle should be explicit and state-based. Avoid free-form statuses.
+- BuyerProfile
+  - resident identity and flat verification
+  - active order list
+  - order history
+  - pickup behavior and trust score
 
-### Standard states
+- MenuItem
+  - seller menu catalog
+  - item type, availability, prep duration
+  - inventory or stock constraints
+
+- Order
+  - order_id
+  - buyer_id
+  - seller_id
+  - item list
+  - requested slot
+  - assigned batch
+  - status history
+  - pricing and payment state
+
+- SellerCapacity
+  - seller_id
+  - slot_start
+  - slot_end
+  - max_orders
+  - prep_time_minutes
+  - accepted_order_count
+  - active_capacity_percent
+
+- FulfillmentBatch
+  - batch_id
+  - seller_id
+  - prep_window
+  - order_count
+  - total_items
+  - readiness_time
+  - pickup_window
+  - batch_status
+
+- PickupSession
+  - pickup_session_id
+  - order_id
+  - buyer_id
+  - seller_id
+  - pickup_time
+  - verification_code
+  - pickup_status
+
+- OrderStatusHistory
+  - order_id
+  - previous_state
+  - new_state
+  - timestamp
+  - actor
+  - reason
+  - source
+
+- ExceptionCase
+  - exception_id
+  - order_id or batch_id
+  - exception_type
+  - severity
+  - raised_by
+  - resolution_status
+
+- SellerQueue
+  - seller_id
+  - pending_orders
+  - accepted_orders
+  - ready_orders
+  - delayed_orders
+  - pickup_waiting
+
+- BuyerPortfolio
+  - buyer_id
+  - active_orders
+  - total_sellers_used
+  - pending_pickups
+  - no_show_events
+
+## 5. Lifecycle and State Model
+
+### 5.1 Order lifecycle
 
 - CREATED
-  - buyer places order
 - VALIDATED
-  - order checks passed
-- ACCEPTED
-  - seller accepted order
-- REJECTED
-  - seller rejected order
+- ACCEPTED_BY_SELLER
+- REJECTED_BY_SELLER
 - PREPARING
-  - seller is making the food
 - READY_FOR_PICKUP
-  - food is prepared and waiting
+- PICKUP_VERIFICATION_PENDING
 - PICKED_UP
-  - buyer received food
 - COMPLETED
-  - order closed successfully
 - CANCELLED
-  - order cancelled before preparation
+- DELAYED
 - FAILED
-  - pickup issue, dispute, or operational exception
 - REFUND_PENDING
-  - money or compensation under review
 - REFUNDED
-  - resolution completed
 
-### Important rule
+### 5.2 Batch lifecycle
 
-All status changes must be validated through business rules. No state should be allowed to skip randomly. Example:
+- BATCH_CREATED
+- ACCEPTED
+- PREPARATION_IN_PROGRESS
+- READY_FOR_PICKUP
+- PICKUP_WINDOW_OPEN
+- BATCH_CLOSED
+- BATCH_EXCEPTION
 
-- READY_FOR_PICKUP cannot happen before ACCEPTED
-- PICKED_UP cannot happen before READY_FOR_PICKUP
-- CANCELLED should not be allowed after PICKED_UP
-- FAILED can occur only when a legitimate operational exception exists
+### 5.3 Key rule
 
-## 7. Logistics Workflow
+The system must validate state transitions on the server, not trust client-side status updates. This is especially important in a platform where many orders are flowing into one seller queue.
 
-### 7.1 Order Intake
+## 6. Required End-to-End Infrastructure
 
-When a buyer places an order:
+To support real tracking, sensing, and analytics, the system should include a full operational telemetry stack.
 
-- validate resident and seller permissions
-- confirm item availability
-- check time-slot availability
-- lock order inventory or item quantity
-- assign order ID
-- create initial event log
-- notify seller
+### 6.1 Event capture layer
 
-### 7.2 Seller Acceptance
+This is the foundation of tracking.
 
-Seller receives order and decides:
+Every meaningful action must generate an event with timestamp, actor, object, and metadata:
 
-- accept
-- reject with reason
-- hold for review
+- order created
+- seller accepted/rejected
+- order preparing
+- food ready for pickup
+- pickup scan or verification
+- no-show or delayed pickup
+- admin override
+- refund initiated
+- seller capacity change
+- notification sent
+- issue escalated
 
-If accepted:
+Required event metadata:
 
-- order moves to PREPARING
-- ETA window is computed
-- notifications are sent to buyer
+- event_id
+- entity_type
+- entity_id
+- actor_id
+- actor_role
+- timestamp
+- source
+- session_id
+- device_id or app version
+- location context if applicable
+- reason code
 
-### 7.3 Preparation and Readiness
+### 6.2 Tracking and sensing infrastructure
 
-Seller updates status as items are prepared. When ready:
+The application should surface operational awareness through multiple sensing layers:
 
-- mark as READY_FOR_PICKUP
-- attach pickup instructions
-- notify buyer of collection window
-- optionally send WhatsApp or in-app status update
+#### Application event sensing
 
-### 7.4 Pickup Coordination
+- app open / close
+- order page views
+- menu selection
+- order placement
+- payment initiation
+- status refreshes
+- pickup confirmation actions
+- notification opens
 
-Buyer arrives to collect order.
+#### Seller operational sensing
 
-Validation steps:
+- seller accepted order count
+- product preparation start/end times
+- batch readiness timestamp
+- delayed order flags
+- missed pickup updates
+- order rejection reasons
 
-- verify order ID or buyer identity
-- confirm pickup window
-- confirm seller and order match
-- mark as PICKED_UP
-- create successful completion event
+#### Pickup sensing
 
-### 7.5 Exceptions
+- QR code or token verification used
+- pickup window entered
+- pickup time matched to expected window
+- buyer identity validation result
+- failed verification attempts
 
-Operational issues are common and must be managed intentionally:
+#### Environment and quality sensing
 
-- seller cannot prepare order in time
-- buyer never arrives
-- wrong food prepared
-- wrong resident picks up order
-- quality complaint
-- late order beyond SLA
+Depending on product maturity, add:
 
-These must be routed to exception handling and admin review.
+- food temperature monitoring for prepared meals where relevant
+- freshness and storage logs for high-risk items
+- inventory count sensing for expiring stock
+- kitchen prep stage timestamps for quality control
 
-## 8. Role-Based Policy Model
+#### Optional geofencing and location awareness
 
-This should be domain-driven and permission-based.
+If policy allows, use:
 
-### Resident policies
+- geofenced pickup zones
+- seller pickup location verification
+- buyer entering/exiting pickup area
+- route or proximity signals for smooth pickup behavior
 
-- can place orders
-- can view own order history
-- can rate seller after pickup
-- cannot view other residents' orders
-- cannot modify seller-level fulfillment state
+This is optional and should be privacy-aware.
 
-### Seller policies
+### 6.3 Messaging and event bus
 
-- can manage own menu and availability
-- can accept/reject their orders
-- can update food preparation status
-- can view only own fulfillment data
-- must not access resident personal data beyond order necessity
+For resilient operations, use a message-driven design:
 
-### Admin policies
+- API layer receives order and state changes
+- domain events are published to message broker
+- consumers process notifications, batch orchestration, analytics, and alerts
 
-- can review all orders and statuses
-- can override order state when necessary
-- can investigate disputes and fraud signals
-- can approve or block sellers
+Recommended options:
 
-### Security principle
+- Kafka for high-scale event streaming
+- RabbitMQ for simpler operational events
+- Redis streams for lightweight async processing in smaller deployments
 
-Least privilege by default. Every action must be validated against role, scope, and business policy.
+### 6.4 Stream processing and orchestration
 
-## 9. Cyber Security and Privacy by Design
+The system should process flow in near real time:
 
-Cyber security is not optional; this platform handles food orders, resident data, seller identity verification, and operational events. Security must be built in from the start.
+- order queue updates
+- seller capacity recalculation
+- delayed order detection
+- no-show flagging
+- notification triggers
+- admin alerting
 
-### 9.1 Core principles
+Key functions:
+
+- event validation
+- deduplication
+- anomaly detection
+- queue health scoring
+- delay prediction
+- operational alert generation
+
+### 6.5 Storage and analytics stack
+
+The data architecture should support both transactional and analytical workloads.
+
+#### Transactional DB
+
+Use PostgreSQL for:
+
+- order records
+- seller profiles
+- resident records
+- status transitions
+- payments and refunds
+- audit logs
+- admin actions
+
+#### Real-time cache / queue
+
+Use Redis for:
+
+- session tracking
+- rate limiting
+- queue snapshots
+- fast order state lookup
+- message buffering
+
+#### Data warehouse / analytics layer
+
+For longer-term analytics use:
+
+- PostgreSQL data marts for operational reporting
+- BigQuery / Snowflake / ClickHouse for large analytics workloads
+- DuckDB or similar for analytics prototyping and dashboarding
+
+#### Analytics objectives
+
+- seller throughput and prep speed
+- daily volume by meal period
+- no-show rate
+- rejection reasons
+- cancellation patterns
+- late-order distribution
+- buyer pickup adherence
+- seller performance scorecards
+- demand forecasts by time and menu category
+
+### 6.6 Observability and dashboards
+
+Build a monitoring stack with:
+
+- operational dashboards for orders, batches, seller queues
+- status distribution dashboards
+- per-seller throughput metrics
+- pickup performance dashboards
+- anomaly and exception monitoring
+- alerting for failures, spikes, and suspicious activity
+
+Recommended monitoring stack:
+
+- Prometheus + Grafana for metrics
+- OpenTelemetry for tracing and instrumentation
+- centralized structured logs for all service calls
+- alert rules for payment failures, delayed batches, and abnormal order spikes
+
+## 7. Analytics Use Cases
+
+This logistics repo should support more than order tracking. It should become a decision system for operations.
+
+### 7.1 Operational analytics
+
+- how many orders are active per seller
+- which sellers are overloaded
+- which meal slots are busiest
+- how often orders are delayed
+- which pickup windows have the most misses
+- which sellers have slower prep times
+
+### 7.2 Demand forecasting
+
+- expected orders per seller by time of day
+- expected demand by menu category
+- seasonal or weekly patterns
+- forecast for busy schedule windows
+
+### 7.3 Exception analytics
+
+- common rejection reasons
+- cancellations and why they happened
+- failed pickups and patterns
+- quality complaints by seller or item
+- recurring admin escalations
+
+### 7.4 Trust and risk scoring
+
+- suspicious repeated no-shows
+- seller delay patterns
+- abnormal order rates from one buyer
+- repeated failed verification attempts
+- elevated exception rates per seller
+
+This supports fraud detection and safer platform operations.
+
+## 8. End-to-End Logistics Flow
+
+### 8.1 Demand intake
+
+Buyer chooses menu → validates seller availability → creates order → event emitted → notification to seller → order queued
+
+### 8.2 Seller fulfillment
+
+Seller reviews queue → accepts or rejects → marks preparation started → batch created → readiness updated → pickup window opened
+
+### 8.3 Pickup stage
+
+Buyer receives notification → arrives at pickup → verifies identity or order token → pickup is validated → order marked picked up → completion event generated
+
+### 8.4 Exception handling
+
+If order is delayed, cancelled, failed, or mismatched:
+
+- exception flag created
+- reason code assigned
+- admin notification sent
+- refund / compensation workflow triggered if needed
+- operational metrics updated
+
+## 9. Architecture Pattern
+
+### 9.1 Core service boundaries
+
+- Order Intake Service
+  - accepts and validates new orders
+  - checks seller capacity and timing
+
+- Seller Fulfillment Service
+  - manages prep queue and acceptance logic
+  - supports delay and rejection rules
+
+- Batch Orchestration Service
+  - groups multiple orders into a seller batch
+  - manages readiness and pickup windows
+
+- Pickup Verification Service
+  - validates buyer identity and order correctness
+  - records pickup events and audit trail
+
+- Notification Service
+  - sends in-app, SMS, email, or WhatsApp updates
+  - tracks message delivery and failure statuses
+
+- Admin Operations Service
+  - monitors queue health
+  - reviews exceptions
+  - approves overrides and refunds
+
+- Analytics Service
+  - calculates metrics and trends
+  - produces dashboards and operational insights
+
+### 9.2 Recommended stack
+
+- Backend: FastAPI
+- Database: PostgreSQL
+- Cache/queue: Redis
+- Event bus: Kafka or RabbitMQ
+- Real-time analytics: ClickHouse / BigQuery / Snowflake
+- Monitoring: Prometheus + Grafana + OpenTelemetry
+- Notification: email/WhatsApp/SMS gateway
+- Containerization: Docker
+- Orchestration: Docker Compose / Kubernetes for production
+
+## 10. Cybersecurity and Privacy Requirements
+
+This platform is a community commerce system that handles resident and seller identity information, order history, meal preparation data, and operational escalations. Security is not optional.
+
+### 10.1 Core security principles
 
 - least privilege access
-- strong authentication
-- secure communication
-- encrypted data at rest and in transit
-- audit logging for every significant action
-- role-based access control
-- secure secrets management
-- validation of all user input
-- defense in depth
+- strong authentication and role-based authorization
+- encrypted communication in transit and at rest
+- audit logging for every state transition
+- secure handling of OTPs, tokens, and user sessions
+- input validation and strict API schema enforcement
+- protection against abuse, scraping, and automated spam
 
-### 9.2 Authentication and authorization
+### 10.2 Access model
 
-- use secure login with strong OTP or token-based verification
-- enforce MFA for admin and privileged actions
-- validate session expiry and token rotation
-- prevent privilege escalation through user-controlled inputs
-- lock accounts after repeated failed login attempts
+- resident can only see their own orders
+- seller can only manage their own queue and own orders
+- admin can review platform-wide metrics, cases, and escalations
+- no raw trust in client-provided order status or permission values
 
-### 9.3 Sensitive data protection
+### 10.3 Sensitive data controls
 
-The system may handle:
+Protect:
 
-- resident flat number and identity references
-- seller bank/payments or payout information
-- order history and contact details
-- status logs and exceptions
+- resident flat and identity details
+- seller payout and identity details
+- pickup verification data
+- admin override logs
+- notifications containing OTPs or personal data
 
-This data must be protected with:
+Use:
 
-- encryption in transit using HTTPS/TLS
-- encryption at rest in the database and backups
-- restricted access to personal data
-- automatic masking in logs and admin views
-- segregation of sensitive fields from general operational data
+- TLS everywhere
+- secrets in environment variables or secret managers
+- strict permission separation for DB and services
+- masked logs and sanitized error messages
+- access logging and export restrictions
 
-### 9.4 Input validation and abuse prevention
+### 10.4 Abuse protection
 
-- validate all API inputs with strict schemas
-- reject malformed payloads early
-- rate-limit public endpoints
-- protect against SQL injection, command injection, and unsafe deserialization
-- sanitize all outputs for logs and UI rendering
+- rate limiting on public endpoints
+- queue abuse detection
+- repeated failed pickup verification checks
+- suspicious order bursts or buyer fraud patterns
+- seller capacity gaming or fake volume generation
 
-### 9.5 Notification security
+### 10.5 Auditability and compliance
 
-- do not expose secret links or OTPs in public logs
-- verify webhook signatures for third-party services
-- enforce secure templates for WhatsApp/email messages
-- avoid exposing order IDs or personal details in plain text unnecessarily
+Every operation that changes order state or business policy should be traceable:
 
-### 9.6 Auditability
+- who changed it
+- when it changed
+- why it changed
+- from which source
 
-The system should log:
+This supports dispute handling and operational accountability.
 
-- order created, cancelled, accepted, rejected, ready, picked up
-- admin overrides
-- failed access attempts
-- data exports
-- sensitive status changes
-
-These logs should be immutable or tamper-resistant where possible.
-
-### 9.7 Secure architecture recommendations
-
-- use a reverse proxy or API gateway in production
-- store secrets in environment variables or a secret manager
-- run containers with non-root users
-- keep dependencies updated and scan for vulnerabilities
-- enforce CORS and secure headers
-- isolate administrative functions from public interfaces
-- enable DB connection security and least-privilege DB users
-
-### 9.8 Cyber-risk scenarios to anticipate
-
-- fake seller registration or impersonation
-- order manipulation by modifying status requests
-- mass order abuse or spam attacks
-- unauthorized admin access and privilege misuse
-- leaked OTP or notification content
-- bots scraping logistics endpoints
-- data exfiltration or weak backups
-
-These should be mitigated through policy checks, strong access control, rate limiting, and operational monitoring.
-
-## 10. Data Model Foundations
-
-A minimal but disciplined data model is enough for the first phase.
-
-### Core entities
-
-- User
-- SellerProfile
-- ResidentProfile
-- MenuItem
-- MenuCatalog
-- Order
-- OrderItem
-- OrderStatusHistory
-- NotificationLog
-- PaymentRecord
-- RefundRecord
-- AdminAction
-- ExceptionCase
-
-### Transaction logic
-
-- order creation must be transactional
-- inventory or menu availability must be validated before acceptance
-- order state change must be recorded in history table
-- each status transition should generate a traceable event
-
-## 11. Recommended Architecture
-
-### API layer
-
-- FastAPI service for order and logistics APIs
-- route separation by domain: orders, fulfillment, pickups, admin, notifications
-
-### Core domain layer
-
-- order service
-- seller fulfillment service
-- pickup service
-- exception handling service
-- admin action service
-
-### Integration layer
-
-- notification service for email/WhatsApp
-- payment status service
-- admin alerting service
-- audit trail / logging service
-
-### Data layer
-
-- PostgreSQL as main transactional database
-- Redis for queue, caching, and rate limiting
-- optional analytics store later
-
-### Observability layer
-
-- structured application logs
-- metrics for order latency and fulfillment health
-- alerting for failed orders, repeated exceptions, or suspicious access patterns
-
-## 12. Phase-Wise Delivery Plan
-
-### Phase 1: Foundation and Stability
-
-Focus on core order flow.
-
-Deliverables:
-
-- order model and statuses
-- seller acceptance workflow
-- ready-for-pickup flow
-- simple admin dashboard
-- order history and audit logging
-- secure authentication and RBAC
-
-### Phase 2: Operational Intelligence
-
-Focus on fulfillment coordination.
-
-Deliverables:
-
-- queue management
-- ETA estimation and SLA warnings
-- pickup timing validation
-- notification flows
-- exceptions and dispute tracking
-
-### Phase 3: Monitoring and Security Hardening
-
-Deliverables:
-
-- rate limiting and abuse detection
-- audit export tools
-- admin escalation workflow
-- security scanning and dependency hygiene
-- incident response runbook
-
-### Phase 4: Analytics and Optimization
-
-Deliverables:
-
-- seller performance analytics
-- order fulfillment trends
-- peak-time insights
-- refund and exception reporting
-- operational dashboards
-
-## 13. Repository Structure
+## 11. Recommended Repository Structure
 
 ```text
 food-platform-logistics/
@@ -418,44 +545,63 @@ food-platform-logistics/
 │   ├── api/
 │   │   ├── routes/
 │   │   │   ├── orders.py
-│   │   │   ├── fulfillment.py
+│   │   │   ├── sellers.py
+│   │   │   ├── batches.py
 │   │   │   ├── pickups.py
 │   │   │   ├── admin.py
-│   │   │   └── notifications.py
+│   │   │   └── analytics.py
 │   │   └── dependencies.py
 │   ├── core/
 │   │   ├── config.py
 │   │   ├── security.py
 │   │   ├── auth.py
-│   │   └── logging.py
+│   │   ├── logging.py
+│   │   └── events.py
 │   ├── db/
 │   │   ├── models.py
 │   │   ├── schemas.py
 │   │   └── session.py
+│   ├── domain/
+│   │   ├── order.py
+│   │   ├── queue.py
+│   │   ├── batch.py
+│   │   ├── pickup.py
+│   │   ├── exception.py
+│   │   └── policies.py
 │   ├── services/
 │   │   ├── order_service.py
 │   │   ├── fulfillment_service.py
+│   │   ├── batch_service.py
 │   │   ├── pickup_service.py
+│   │   ├── analytics_service.py
 │   │   ├── notification_service.py
-│   │   └── exception_service.py
-│   ├── domain/
-│   │   ├── order.py
-│   │   ├── status.py
-│   │   ├── events.py
-│   │   └── policies.py
+│   │   └── admin_service.py
 │   └── main.py
+├── infra/
+│   ├── docker/
+│   ├── telemetry/
+│   ├── monitoring/
+│   └── kafka/
+├── analytics/
+│   ├── dashboards/
+│   ├── models/
+│   ├── etl/
+│   └── queries/
 ├── tests/
 │   ├── test_orders.py
-│   ├── test_fulfillment.py
+│   ├── test_batches.py
 │   ├── test_pickups.py
-│   └── test_security.py
+│   ├── test_security.py
+│   └── test_analytics.py
 ├── docs/
 │   ├── logistics-workflow.md
+│   ├── api-contracts.md
 │   ├── security.md
 │   ├── runbook.md
-│   └── api-contracts.md
+│   └── analytics-spec.md
 ├── scripts/
 │   ├── seed_data.py
+│   ├── export_metrics.py
 │   └── backup.sh
 ├── .env.example
 ├── requirements.txt
@@ -463,103 +609,91 @@ food-platform-logistics/
 ├── docker-compose.yml
 ├── README.md
 ├── LICENSE
-└── .gitignore
+├── .gitignore
+└── .pre-commit-config.yaml
 ```
 
-## 14. Example Service Responsibilities
+## 12. Key Operational KPIs
 
-### OrderService
+Track from day one:
 
-- create order
-- validate item availability
-- enforce cut-off policy
-- update state transitions
-- emit order events
-
-### FulfillmentService
-
-- accept or reject order
-- update preparation timing
-- mark ready for pickup
-- escalate delays
-
-### PickupService
-
-- validate buyer identity and pickup window
-- confirm pickup record
-- resolve no-show or mismatch flows
-
-### NotificationService
-
-- schedule order updates
-- deliver WhatsApp/email updates
-- maintain delivery status log
-
-### AdminService
-
-- monitor queue health
-- review exception cases
-- manage seller and resident escalations
-- override operations when required
-
-## 15. Operational KPIs
-
-Track these from day one:
-
-- order acceptance rate
-- average preparation time
+- seller throughput per slot
+- accepted vs rejected order ratio
+- average prep time per seller
+- batch readiness delay
 - pickup success rate
-- late order rate
-- cancellation rate
-- refund rate
-- average violation or exception count
-- notification delivery rate
-- response time for admin review
+- no-show rate
+- delayed order rate
+- cancellation cause breakdown
+- admin intervention rate
+- fulfillment SLA adherence
+- average queue length per seller
+- percentage of orders completed within target window
 
-## 16. Security Controls Checklist
+## 13. Phase-Wise Delivery Plan
 
-Before production launch, the platform should meet these minimum conditions:
+### Phase 1 — Core logistics foundation
 
-- HTTPS enforced everywhere
-- secrets stored outside source control
-- strong user authentication
-- admin-only privileged endpoints
-- audit logs enabled for all state changes
-- rate limiting on public APIs
-- input validation on all endpoints
-- dependency vulnerability scanning
-- regular backups with recovery testing
-- least privilege database and service accounts
-- incident response documentation
+- order lifecycle
+- seller queue
+- batching logic
+- picker verification flow
+- admin exception view
+- audit logs
 
-## 17. Recommended Production Standards
+### Phase 2 — Queue and capacity management
 
-- All production services should run behind TLS and reverse proxy
-- API keys and tokens should never be hardcoded
-- All DB writes should be associated with a user/session identity
-- No direct trust in client-side status values
-- Any action that changes business state must be validated server-side
-- All API responses should avoid leaking internal system details
+- seller capacity windows
+- backlog management
+- pickup window scheduling
+- rejection and delay codes
+- notification automation
 
-## 18. Decision Summary
+### Phase 3 — Sensing and tracking
 
-This repository should be built as the operational trust layer for the food platform:
+- event stream pipeline
+- operational telemetry
+- queue health and seller status metrics
+- pickup verification analytics
+- alerts for unexpected delays
 
-- not just order tracking
-- not just status updates
-- but the system that keeps the whole society food marketplace reliable, transparent, and secure
+### Phase 4 — Analytics and intelligence
 
-## 19. Next Steps
+- demand forecasting
+- seller performance trends
+- anomaly detection
+- no-show prevention signals
+- optimization recommendations
 
-1. Create the domain model for Order and Status
-2. Build the order API and state machine
-3. Implement seller fulfillment flow
-4. Add pickup verification and exception handling
-5. Add admin monitoring and audit logs
-6. Harden security and monitoring before launch
+### Phase 5 — Security and trust hardening
 
-## 20. Final Goal
+- access reviews
+- abuse detection
+- secure admin workflows
+- audit export and compliance reporting
+- incident response readiness
 
-The end state is a logistics system that helps the society food platform work smoothly, safely, and with strong operational confidence for both residents and sellers.
+## 14. Final Strategic Principle
 
-This is the right place to build a secure and scalable logistics engine for the application.
+This repo should not just move orders from buyer to seller. It should manage the entire local fulfillment ecosystem:
+
+- many buyers placing orders into a seller’s queue
+- one seller processing multiple orders in a limited preparation window
+- many sellers operating independently but under one community platform
+- a pickup process that must be verified, tracked, and trusted
+- data collection and analytics that make the system efficient, secure, and scalable
+
+That is the true logistics model for this app.
+
+## 15. Final Objective
+
+The end state is a secure, observable, and scalable logistics platform that can support:
+
+- real-time operational visibility
+- queue-based fulfillment coordination
+- seller capacity management
+- buyer pickup reliability
+- exception handling
+- trusted data analytics for decisions and growth
+
+This repo is the right place to build that operational backbone.
