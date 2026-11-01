@@ -5,10 +5,9 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.core.auth import require_roles
-from app.core.events import emit_event
 from app.db.database import get_db
 from app.db.models import ExceptionCase
-from app.services.refund_service import issue_refund, mark_no_show
+from app.core.events import emit_event
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -21,18 +20,12 @@ class RaiseExceptionRequest(BaseModel):
     reason: str = "manual_review"
 
 
-class NoShowRequest(BaseModel):
-    order_id: int
-    reason: str = "no_show"
-
-
-class RefundRequest(BaseModel):
-    order_id: int
-    reason: str = "pickup_failed"
-
-
 @router.post("/exceptions")
-def create_exception(payload: RaiseExceptionRequest, db: Session = Depends(get_db), current_user: dict = Depends(require_roles("admin"))):
+def create_exception(
+    payload: RaiseExceptionRequest,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_roles("admin")),
+):
     exc = ExceptionCase(
         order_id=payload.order_id,
         batch_id=payload.batch_id,
@@ -57,17 +50,6 @@ def create_exception(payload: RaiseExceptionRequest, db: Session = Depends(get_d
     return {"ok": True, "exception_id": exc.id, "status": exc.status}
 
 
-@router.post("/no-show")
-def no_show(payload: NoShowRequest, db: Session = Depends(get_db), _: dict = Depends(require_roles("admin"))):
-    result = mark_no_show(db, payload.order_id, payload.reason)
-    if not result["ok"]:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=result["detail"])
-    return result
-
-
-@router.post("/refund")
-def refund_order(payload: RefundRequest, db: Session = Depends(get_db), _: dict = Depends(require_roles("admin"))):
-    result = issue_refund(db, payload.order_id, payload.reason)
-    if not result["ok"]:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=result["detail"])
-    return result
+@router.get("/health")
+def admin_health(_: dict = Depends(require_roles("admin", "seller"))):
+    return {"ok": True, "message": "admin operations available"}
