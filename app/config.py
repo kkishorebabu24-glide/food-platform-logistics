@@ -6,6 +6,8 @@ class Settings(BaseSettings):
     environment: str = "development"
     database_url: str = "sqlite:///./food_platform.db"
     secret_key: str = "change-me"
+    jwt_algorithm: str = "HS256"
+    jwt_expiry_hours: int = 8
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 

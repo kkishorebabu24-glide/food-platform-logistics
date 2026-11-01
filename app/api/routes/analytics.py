@@ -6,8 +6,8 @@ from sqlalchemy.orm import Session
 
 from app.core.auth import require_roles
 from app.db.database import get_db
-from app.services.analytics_service import platform_overview, seller_summary
-from app.services.batch_service import seller_queue_snapshot, seller_exception_summary
+from app.services.analytics_service import dashboard_summary, platform_overview, seller_summary
+from app.services.batch_service import seller_exception_summary, seller_queue_snapshot
 
 router = APIRouter(prefix="/analytics", tags=["analytics"])
 
@@ -22,6 +22,11 @@ class AdminActionRequest(BaseModel):
 @router.get("/overview")
 def get_overview(db: Session = Depends(get_db), _: dict = Depends(require_roles("admin", "seller"))):
     return platform_overview(db)
+
+
+@router.get("/dashboard")
+def get_dashboard_summary(db: Session = Depends(get_db), _: dict = Depends(require_roles("admin", "seller"))):
+    return dashboard_summary(db)
 
 
 @router.get("/sellers/{seller_id}")
