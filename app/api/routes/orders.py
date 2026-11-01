@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List
-
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
@@ -14,7 +12,10 @@ router = APIRouter(prefix="/orders", tags=["orders"])
 
 @router.post("", status_code=status.HTTP_201_CREATED)
 def create_order_route(payload: OrderCreate, db: Session = Depends(get_db)):
-    return create_order(db, payload)
+    try:
+        return create_order(db, payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
 
 @router.get("")
@@ -32,7 +33,11 @@ def get_order_route(order_id: int, db: Session = Depends(get_db)):
 
 @router.patch("/{order_id}/status")
 def update_order_status_route(order_id: int, payload: OrderStatusUpdate, db: Session = Depends(get_db)):
-    order = update_order_status(db, order_id, payload.status, payload.reason)
+    try:
+        order = update_order_status(db, order_id, payload.status, payload.reason)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+
     if not order:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Order not found")
     return order

@@ -4,7 +4,9 @@ from datetime import datetime
 
 from sqlalchemy.orm import Session
 
-from app.db.models import Order, OrderItem, SellerProfile, User
+from app.core.events import emit_event
+from app.core.state_machine import assert_valid_transition
+from app.db.models import Order, OrderItem, OrderStatusHistory, SellerProfile, User
 from app.schemas.order import OrderCreate
 
 
@@ -38,8 +40,27 @@ def create_order(db: Session, payload: OrderCreate):
         )
         db.add(order_item)
 
+    db.add(
+        OrderStatusHistory(
+            order_id=order.id,
+            old_status=None,
+            new_status="created",
+            changed_by="system",
+            reason="initial_order_creation",
+        )
+    )
+
     db.commit()
     db.refresh(order)
+
+    emit_event(
+        event_name="order.created",
+        entity_type="order",
+        entity_id=order.id,
+        actor_id=payload.buyer_id,
+        actor_role="buyer",
+        metadata={"seller_id": payload.seller_id, "subtotal": subtotal},
+    )
     return order
 
 
@@ -55,8 +76,32 @@ def update_order_status(db: Session, order_id: int, status: str, reason: str | N
     order = db.query(Order).filter(Order.id == order_id).first()
     if not order:
         return None
+
+    current_status = order.status
+    assert_valid_transition(current_status, status)
+
+    previous_status = order.status
     order.status = status
     order.updated_at = datetime.utcnow()
+
+    db.add(
+        OrderStatusHistory(
+            order_id=order.id,
+            old_status=previous_status,
+            new_status=status,
+            changed_by="system",
+            reason=reason or "status_updated",
+        )
+    )
+
     db.commit()
     db.refresh(order)
+
+    emit_event(
+        event_name=f"order.{status}",
+        entity_type="order",
+        entity_id=order.id,
+        actor_role="system",
+        metadata={"from_status": previous_status, "reason": reason},
+    )
     return order
